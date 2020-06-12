@@ -12,7 +12,9 @@ SERVICE_CHECK_NAME = 'burrow.can_connect'
 
 DEFAULT_BURROW_URI = 'http://localhost:8000'
 
-CLUSTER_ENDPOINT = '/v2/kafka'
+CLUSTER_ENDPOINT = '/v3/kafka'
+
+OFFSETS_TOPIC = "__consumer_offsets"
 
 CHECK_TIMEOUT = 10
 
@@ -48,19 +50,25 @@ class BurrowCheck(AgentCheck):
             consumers_list = self._rest_request_to_json(burrow_address, consumers_path).get("consumers", [])
             for consumer in consumers_list:
                 lags_path = "%s/%s/lag" % (consumers_path, consumer)
-                lag_json = self._rest_request_to_json(burrow_address, lags_path)
-                if not lag_json:
-                    continue
-                status = lag_json["status"]
-                consumer_tags = ["cluster:%s" % cluster, "consumer:%s" % consumer] + extra_tags
+                try:
+                    lag_json = self._rest_request_to_json(burrow_address, lags_path)
+                    if not lag_json:
+                        continue
+                    status = lag_json["status"]
+                    consumer_tags = ["cluster:%s" % cluster, "consumer:%s" % consumer] + extra_tags
 
-                self.gauge("kafka.consumer.totallag", status["totallag"], tags=consumer_tags)
-                self._submit_lag_status("kafka.consumer.lag_status", status["status"], tags=consumer_tags)
+                    self.gauge("kafka.consumer.totallag", status["totallag"], tags=consumer_tags)
+                    self._submit_lag_status("kafka.consumer.lag_status", status["status"], tags=consumer_tags)
 
-                for partition in status.get("partitions", []):
-                    partition_tags = consumer_tags + ["topic:%s" % partition["topic"], "partition:%s" % partition["partition"]]
-                    self._submit_partition_lags(partition, partition_tags)
-                    self._submit_lag_status("kafka.consumer.partition_lag_status", partition["status"], tags=partition_tags)
+                    for partition in status.get("partitions", []):
+                        partition_tags = consumer_tags + ["topic:%s" % partition["topic"], "partition:%s" % partition["partition"]]
+                        self._submit_partition_lags(partition, partition_tags)
+                        self._submit_lag_status("kafka.consumer.partition_lag_status", partition["status"], tags=partition_tags)
+                except requests.exceptions.HTTPError as e:
+                    if e.response.status_code == 404:
+                        self.log.error("Got 404 for consumers lag path ({}), will ignore it.".format(lags_path))
+                    else:
+                        raise e
 
     def _submit_lag_status(self, metric_namespace, status, tags):
         burrow_status = {
@@ -113,7 +121,8 @@ class BurrowCheck(AgentCheck):
         """
         for cluster in clusters:
             cluster_path = "%s/%s" % (CLUSTER_ENDPOINT, cluster)
-            offsets_topic = self._rest_request_to_json(burrow_address, cluster_path)["cluster"]["offsets_topic"]
+            #offsets_topic = self._rest_request_to_json(burrow_address, cluster_path)["cluster"]["offsets_topic"]
+            offsets_topic = OFFSETS_TOPIC
             topics_path = "%s/topic" % cluster_path
             topics_list = self._rest_request_to_json(burrow_address, topics_path).get("topics", [])
             for topic in topics_list:
@@ -133,15 +142,21 @@ class BurrowCheck(AgentCheck):
             consumers_list = self._rest_request_to_json(burrow_address, consumers_path).get("consumers", [])
             for consumer in consumers_list:
                 topics_path = "%s/%s/topic" % (consumers_path, consumer)
-                topics_list = self._rest_request_to_json(burrow_address, topics_path).get("topics", [])
-                for topic in topics_list:
-                    topic_path = "%s/%s" % (topics_path, topic)
-                    response = self._rest_request_to_json(burrow_address, topic_path)
-                    if not response:
-                        continue
-                    tags = ["topic:%s" % topic, "cluster:%s" % cluster,
-                            "consumer:%s" % consumer] + extra_tags
-                    self._submit_offsets_from_json(offsets_type="consumer", json=response, tags=tags)
+                try:
+                    topics_list = self._rest_request_to_json(burrow_address, topics_path).get("topics", [])
+                    for topic in topics_list:
+                        topic_path = "%s/%s" % (topics_path, topic)
+                        response = self._rest_request_to_json(burrow_address, topic_path)
+                        if not response:
+                            continue
+                        tags = ["topic:%s" % topic, "cluster:%s" % cluster,
+                                "consumer:%s" % consumer] + extra_tags
+                        self._submit_offsets_from_json(offsets_type="consumer", json=response, tags=tags)
+                except requests.exceptions.HTTPError as e:
+                    if e.response.status_code == 404:
+                        self.log.error("Got 404 for topics path ({}), will ignore it.".format(topics_path))
+                    else:
+                        raise e
 
     def _submit_offsets_from_json(self, offsets_type, json, tags):
         """
