@@ -34,8 +34,9 @@ class BurrowCheck(AgentCheck):
         self.log.debug("Collecting Topic Offsets")
         self._topic_offsets(clusters, burrow_address, extra_tags)
 
-        self.log.debug("Collecting Consumer Group Offsets")
-        self._consumer_groups_offsets(clusters, burrow_address, extra_tags)
+        # Api changed a little bit.. getting consumer offsets while we get consumer lag.
+        # self.log.debug("Collecting Consumer Group Offsets")
+        # self._consumer_groups_offsets(clusters, burrow_address, extra_tags)
 
         self.log.debug("Collecting Consumer Group lags")
         self._consumer_groups_lags(clusters, burrow_address, extra_tags)
@@ -95,6 +96,8 @@ class BurrowCheck(AgentCheck):
         if end is not None:
             lag = end.get("lag")
             self.gauge("kafka.consumer.partition_lag", lag, tags=tags)
+            offset = end.get("offset")
+            self.gauge("kafka.consumer.offsets", offset, tags=tags)
 
     def _check_burrow(self, burrow_address, extra_tags):
         """
@@ -133,9 +136,11 @@ class BurrowCheck(AgentCheck):
                 tags = ["topic:%s" % topic, "kafka_cluster:%s" % cluster] + extra_tags
                 self._submit_offsets_from_json(offsets_type="topic", json=response, tags=tags)
 
-    def _consumer_groups_offsets(self, clusters, burrow_address, extra_tags):
+    def _consumer_groups_offsets_vDeprecated(self, clusters, burrow_address, extra_tags):
         """
-        Retrieve the offsets for all consumer groups in the clusters
+        Retrieve the offsets for all consumer groups in the clusters.
+
+        The api changed a little bit, getting and submitting the consumer offset while we get consumer lag.
         """
         for cluster in clusters:
             consumers_path = "%s/%s/consumer" % (CLUSTER_ENDPOINT, cluster)
@@ -157,6 +162,7 @@ class BurrowCheck(AgentCheck):
                         self.log.error("Got 404 for topics path ({}), will ignore it.".format(topics_path))
                     else:
                         raise e
+
 
     def _submit_offsets_from_json(self, offsets_type, json, tags):
         """
