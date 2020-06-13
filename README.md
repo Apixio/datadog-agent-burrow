@@ -48,7 +48,7 @@ Per Partition lag status of a consumer group:
 * `kafka.consumer.partition_lag_status.stall`
 * `kafka.consumer.partition_lag_status.rewind`
 
-All metrics are tagged with `cluster`, `topic`, `consumer` and `partition` (where applicable)  to make it easy to filter out in Datadog.
+All metrics are tagged with `kafka_cluster`, `topic`, `consumer` and `partition` (where applicable)  to make it easy to filter out in Datadog.
 
 Development
 ===========

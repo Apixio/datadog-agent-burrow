@@ -55,7 +55,7 @@ class BurrowCheck(AgentCheck):
                     if not lag_json:
                         continue
                     status = lag_json["status"]
-                    consumer_tags = ["cluster:%s" % cluster, "consumer:%s" % consumer] + extra_tags
+                    consumer_tags = ["kafka_cluster:%s" % cluster, "consumer:%s" % consumer] + extra_tags
 
                     self.gauge("kafka.consumer.totallag", status["totallag"], tags=consumer_tags)
                     self._submit_lag_status("kafka.consumer.lag_status", status["status"], tags=consumer_tags)
@@ -130,7 +130,7 @@ class BurrowCheck(AgentCheck):
                     continue
                 topic_path = "%s/%s" % (topics_path, topic)
                 response = self._rest_request_to_json(burrow_address, topic_path)
-                tags = ["topic:%s" % topic, "cluster:%s" % cluster] + extra_tags
+                tags = ["topic:%s" % topic, "kafka_cluster:%s" % cluster] + extra_tags
                 self._submit_offsets_from_json(offsets_type="topic", json=response, tags=tags)
 
     def _consumer_groups_offsets(self, clusters, burrow_address, extra_tags):
@@ -149,7 +149,7 @@ class BurrowCheck(AgentCheck):
                         response = self._rest_request_to_json(burrow_address, topic_path)
                         if not response:
                             continue
-                        tags = ["topic:%s" % topic, "cluster:%s" % cluster,
+                        tags = ["topic:%s" % topic, "kafka_cluster:%s" % cluster,
                                 "consumer:%s" % consumer] + extra_tags
                         self._submit_offsets_from_json(offsets_type="consumer", json=response, tags=tags)
                 except requests.exceptions.HTTPError as e:
