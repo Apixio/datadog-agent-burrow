@@ -63,7 +63,11 @@ class BurrowCheck(AgentCheck):
 
                     for partition in status.get("partitions", []):
                         partition_tags = consumer_tags + ["topic:%s" % partition["topic"], "partition:%s" % partition["partition"]]
-                        self._submit_partition_lags(partition, partition_tags)
+                        if "current_lag" in partition:
+                            current_lag = partition["current_lag"]
+                        else:
+                            current_lag = None
+                        self._submit_partition_lags(current_lag, partition, partition_tags)
                         self._submit_lag_status("kafka.consumer.partition_lag_status", partition["status"], tags=partition_tags)
                 except requests.exceptions.HTTPError as e:
                     if e.response.status_code == 404:
@@ -91,11 +95,12 @@ class BurrowCheck(AgentCheck):
         for metric_name, value in burrow_status.iteritems():
             self.gauge("%s.%s" % (metric_namespace, metric_name.lower()), value, tags=tags)
 
-    def _submit_partition_lags(self, partition, tags):
+    def _submit_partition_lags(self, current_lag, partition, tags):
         end = partition.get("end")
         if end is not None:
-            lag = end.get("lag")
-            self.gauge("kafka.consumer.partition_lag", lag, tags=tags)
+            #lag = end.get("lag")
+            if current_lag is not None:
+                self.gauge("kafka.consumer.partition_lag", current_lag, tags=tags)
             offset = end.get("offset")
             self.gauge("kafka.consumer.offsets", offset, tags=tags)
 
